@@ -9,6 +9,7 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
     
     var currentLines = [NSValue:Line]()
     var finishedLines = [Line]()
+    var menuOpen = false
     
     @IBInspectable var finishedLineColor: UIColor = UIColor.black {
         didSet {
@@ -137,6 +138,9 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
         
         if selectedLineIndex != nil {
             
+            // Set Menu Open
+            menuOpen = true
+            
             // Make ourselves the target of menu item action messages
             becomeFirstResponder()
             
@@ -151,6 +155,9 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
         } else {
             // Hide the menu if no line is selected
             menu.setMenuVisible(false, animated: true)
+            
+            // Remove Menu Open
+            menuOpen = false
         }
         
         setNeedsDisplay()
@@ -167,13 +174,38 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
         }
     }
     
+    private func pythag(xDiff: CGFloat, yDiff: CGFloat) -> CGFloat {
+        return sqrt(
+                (xDiff * xDiff) + (yDiff * yDiff)
+            )
+    }
+    
+    func calcVelocity(_ line: Line) -> CGFloat {
+        let time = CGFloat(line.touchStop - line.touchStart)
+        
+        let xDiff = abs(line.begin.x - line.end.x)
+        let yDiff = abs(line.begin.y - line.end.y)
+        
+        let dist = pythag(xDiff: xDiff, yDiff: yDiff)
+        
+        return time / dist
+    }
+    
     func stroke(_ line: Line) {
         let path = UIBezierPath()
+        
         path.lineWidth = lineThickness
         path.lineCapStyle = .round
         
         path.move(to: line.begin)
         path.addLine(to: line.end)
+        
+        let velocity = calcVelocity(line) * 10000
+
+        if velocity > 1 {
+            path.lineWidth = velocity
+        }
+        
         path.stroke()
     }
     
@@ -222,10 +254,19 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
         // Let's put in a log statement to see the order of events
         print(#function)
         
+        if menuOpen {
+            return
+        }
+        
         for touch in touches {
             let location = touch.location(in: self)
             
-            let newLine = Line(begin: location, end: location)
+            let newLine = Line(
+                begin: location,
+                end: location,
+                touchStart: NSDate().timeIntervalSince1970,
+                touchStop: NSDate().timeIntervalSince1970
+            )
             
             let key = NSValue(nonretainedObject: touch)
             currentLines[key] = newLine
@@ -237,6 +278,10 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
         // Let's put in a print statement to see the order of events
         print(#function)
+        
+        if menuOpen {
+            return
+        }
         
         for touch in touches {
             let key = NSValue(nonretainedObject: touch)
@@ -250,10 +295,15 @@ class DrawView: UIView, UIGestureRecognizerDelegate {
         // Let's put in a log statement to see the order of events
         print(#function)
         
+        if menuOpen {
+            return
+        }
+        
         for touch in touches {
             let key = NSValue(nonretainedObject: touch)
             if var line = currentLines[key] {
                 line.end = touch.location(in: self)
+                line.touchStop = NSDate().timeIntervalSince1970
                 
                 finishedLines.append(line)
                 currentLines.removeValue(forKey: key)
